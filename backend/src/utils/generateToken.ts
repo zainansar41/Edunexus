@@ -1,18 +1,19 @@
 import jwt from "jsonwebtoken";
 import { type Response } from "express";
+import {
+  JWT_ALGORITHM,
+  JWT_COOKIE_NAME,
+  JWT_EXPIRES_IN,
+  authCookieOptions,
+  getJwtSecret,
+} from "../config/auth.ts";
 
-export const generateToken = (userId: string, res: Response) => {
-  const token = jwt.sign({ userId }, process.env.JWT_SECRET as string, {
-    expiresIn: "30d",
-    algorithm: "HS512",
+export const generateToken = (userId: string, res: Response): string => {
+  const token = jwt.sign({ userId }, getJwtSecret(), {
+    expiresIn: JWT_EXPIRES_IN,
+    algorithm: JWT_ALGORITHM,
   });
 
-  // attach token to http-only cookie
-  res.cookie("jwt", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    path: "/", // cookie valid for entire site
-  });
+  res.cookie(JWT_COOKIE_NAME, token, authCookieOptions());
+  return token;
 };

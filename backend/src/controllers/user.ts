@@ -3,11 +3,18 @@ import User from "../models/user.ts";
 import { generateToken } from "../utils/generateToken.ts";
 import { logActivity } from "../utils/activitieslog.ts";
 import type { AuthRequest } from "../middleware/auth.ts";
+import {
+  JWT_COOKIE_NAME,
+  clearAuthCookieOptions,
+} from "../config/auth.ts";
 
 // @desc    Register a new user
 // @route   POST /api/users/register
 // @access  Private (Admin & Teacher only)
-export const register = async (req: Request, res: Response): Promise<void> => {
+export const register = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
     const {
       name,
@@ -19,7 +26,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       isActive,
     } = req.body;
 
-    // check if user already exists
     const existingUser = await User.findOne({ email });
 
     if (existingUser) {
@@ -27,7 +33,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // create user
     const newUser = await User.create({
       name,
       email,
@@ -39,10 +44,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     });
 
     if (newUser) {
-      // we don't have req.user type defined, so we use a type assertion
-      if ((req as any).user) {
+      if (req.user) {
         await logActivity({
-          userId: (req as any).user._id,
+          userId: req.user._id.toString(),
           action: "Registered User",
           details: `Registered user with email: ${newUser.email}`,
         });
@@ -73,9 +77,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
 
-    // check if user exists and password matches
     if (user && (await user.matchPassword(password))) {
-      // generate token
       generateToken(user.id.toString(), res);
       res.json(user);
     } else {
@@ -89,7 +91,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 // @desc    Update user (Admin)
 // @route   PUT /api/users/:id
 // @access  Private/Admin
-export const updateUser = async (req: Request, res: Response) => {
+export const updateUser = async (req: AuthRequest, res: Response) => {
   try {
     const user = await User.findById(req.params.id);
     if (user) {
@@ -104,18 +106,13 @@ export const updateUser = async (req: Request, res: Response) => {
         user.password = req.body.password;
       }
       const updatedUser = await user.save();
-      // up to here it's working
-      if ((req as any).user) {
-        // here we passing userId as objectId instead of string
-        // we also have other problem
+      if (req.user) {
         await logActivity({
-          userId: (req as any).user._id.toString(),
+          userId: req.user._id.toString(),
           action: "Updated User",
           details: `Updated user with email: ${updatedUser.email}`,
         });
       }
-      // we are not returning something here (res.json) so the client is waiting forever
-      // sorry about that!
       res.json({
         _id: updatedUser._id,
         name: updatedUser.name,
@@ -187,20 +184,17 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// next
 // @desc    Delete user (Admin)
 // @route   DELETE /api/users/:id
 // @access  Private/Admin
-export const deleteUser = async (req: Request, res: Response) => {
+export const deleteUser = async (req: AuthRequest, res: Response) => {
   try {
     const user = await User.findById(req.params.id);
     if (user) {
       await user.deleteOne();
-      if ((req as any).user) {
-        // here we passing userId as objectId instead of string
-        // we also have other problem
+      if (req.user) {
         await logActivity({
-          userId: (req as any).user._id.toString(),
+          userId: req.user._id.toString(),
           action: "Deleted User",
           details: `Deleted user with email: ${user.email}`,
         });
@@ -239,12 +233,9 @@ export const getUserProfile = async (req: AuthRequest, res: Response) => {
 // @desc    Logout user / clear cookie
 // @route   POST /api/users/logout
 // @access  Public
-export const logoutUser = async (req: Request, res: Response) => {
+export const logoutUser = async (_req: Request, res: Response) => {
   try {
-    res.cookie("jwt", "", {
-      httpOnly: true,
-      expires: new Date(0), //expire the cookie immediately
-    });
+    res.cookie(JWT_COOKIE_NAME, "", clearAuthCookieOptions());
     res.json({ message: "Logged out successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server Error", error });
